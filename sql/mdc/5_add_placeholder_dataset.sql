@@ -1,0 +1,65 @@
+INSERT INTO EDAP_MDC.DATASET
+(
+    DATASET_CONTAINER_ID,
+    NAME,
+    LOCATION,
+    DATASET_TYPE
+)
+SELECT
+
+    26,
+    'ECDM_C_B_ADDR_OUT',
+    '',
+    'PLACEHOLDER'
+
+-- get data set id 121
+
+
+INSERT INTO EDAP_MDC.DATASET
+(
+    DATASET_CONTAINER_ID,
+    NAME,
+    LOCATION,
+    DATASET_TYPE
+)
+SELECT
+
+    26,
+    'ECDM_PARTY_AGMT_ADDR_OUT',
+    '',
+    'PLACEHOLDER'
+
+-- get data set id 276
+
+
+INSERT INTO EDAP_MDC.DATASET
+(
+    DATASET_CONTAINER_ID,
+    NAME,
+    LOCATION,
+    DATASET_TYPE
+)
+SELECT
+
+    26,
+    'ECDM_PARTY_ADDR_OUT',
+    '',
+    'PLACEHOLDER'
+
+-- get data set id 277
+
+INSERT INTO EDAP_MDC.DATASET
+(
+    DATASET_CONTAINER_ID,
+    NAME,
+    LOCATION,
+    DATASET_TYPE
+)
+SELECT
+
+    26,
+    'ECDM_C_B_AGRMNT_OUT',
+    '',
+    'PLACEHOLDER'
+
+-- get data set id 278
