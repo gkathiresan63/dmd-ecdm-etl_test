@@ -3,7 +3,11 @@ TRUNCATE TABLE EDW_STAGING.PARTY_MASTER_OF_MASTERS_XREF_PRE_WORK;
 
 
 -- Populate the Pre work table 
---  Apply dedup logic
+/* Pre work logic 
+    
+     Dedup based on key and load pre_work_table 
+     Begin_dt = source begin_date
+     end_date = 9999.               */
 
 INSERT INTO EDW_STAGING.PARTY_MASTER_OF_MASTERS_XREF_PRE_WORK
 (
@@ -65,6 +69,11 @@ FROM
 )SRC
 WHERE SRC.RNK = 1;
 
+/* Delete logic 
+     
+     Logical delete records which are presnet in Source with ADD_UPD_DEL_IND = 'D'
+     Begin_date - Set from target if record presnet , else from source
+     End_date  - 9999  */
 
 
 -- Apply delete records
@@ -124,8 +133,12 @@ WHERE SRC.ADD_UPD_DEL_IND = 'D';
 
 
 
-
 -- Apply insert part for all records
+/* Insert logic 
+     
+     Insert records which are not presnet in target for Source with ADD_UPD_DEL_IND = 'I'
+     Begin_date - 0000 or from source(check this)
+     End_date  - 9999  */
 INSERT INTO EDW_WORK.PARTY_MASTER_OF_MASTERS_XREF
 (
     DIM_PARTY_NATURAL_KEY_HASH_UUID,     
@@ -183,7 +196,12 @@ AND SRC.ADD_UPD_DEL_IND = 'I';   -- what happens when a already deleted record(l
 
 
 -- For update we need to have two records, one for prev another for curr
--- Curr
+/* Curr Update logic 
+     
+     Insert records which are presnet in target for Source with ADD_UPD_DEL_IND = 'U'
+     Begin_date - source begin date
+     End_date  - 9999  
+     Current_row_ind = True */
 
 ---------------- check the below curr update is needed or can be take can with insert/update --------
 INSERT INTO EDW_WORK.PARTY_MASTER_OF_MASTERS_XREF
@@ -240,6 +258,14 @@ WHERE
 AND SRC.ADD_UPD_DEL_IND = 'U';
 
 -- Prev
+/* Prev Update logic 
+     
+     Insert records which are presnet in target for Source with ADD_UPD_DEL_IND = 'U'
+     Begin_date - target begin date
+     End_date  - source_date - 1  
+     Current_row_ind = False */
+
+
 INSERT INTO EDW_WORK.PARTY_MASTER_OF_MASTERS_XREF
 (
     DIM_PARTY_NATURAL_KEY_HASH_UUID,     
