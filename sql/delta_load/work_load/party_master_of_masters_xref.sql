@@ -58,26 +58,34 @@ SELECT
     CLEAN_STRING(SRC.STS_CD) AS PARTY_ID_STATUS_TYPE_CDE,
     CLEAN_STRING(SRC.ALT_ID_STYP_CD) AS PARTY_ID_STATUS_TYPE_CDE,
     SRC.ADD_UPD_DEL_IND                                         AS ADD_UPD_DEL_IND
-FROM
+FROM EDW_STAGING.ECDM_C_B_PARTY_ALT_ID_OUT SRC;
 (
-SELECT
+/*SELECT
     SRC_DUP.*,
     ROW_NUMBER() OVER (PARTITION BY CLEAN_STRING(SRC_DUP.MEMBER_ID) ORDER BY SRC_DUP.SRC_LST_MOD_TS DESC) AS RNK
 
 FROM 
    EDW_STAGING.ECDM_C_B_PARTY_ALT_ID_OUT SRC_DUP
 )SRC
-WHERE SRC.RNK = 1;
+WHERE SRC.RNK = 1;*/
 
 
 -- Apply delete records
 /* Delete logic 
      
-     Logical delete records which are presnet in Source with ADD_UPD_DEL_IND = 'D'
+     Logical delete records which are presnet in Source with ADD_UPD_DEL_IND = 'D' . Please note CURRENT_ROW_IND will be set to True for Logical delete records.
      Begin_date - Set from target if record presnet , else from source
-     End_date  - 9999  */
+     End_date  - 9999 
+     CURRENT_ROW_IND = TRUE *
+     will there be any case where */
      
-    
+/* questions 
+    what happens when a record comes with 'D' and having target record with CURRENT_ROW_IND = FALSE (previously update record which has ended)? As per current logic if will be a logical delete record again with out of sync begin and enddate with previous records?
+    If same record comes with 'I' and 'U', We will insert 2 records with same parameters(not sure whether final merge step will fail)
+    what happens when a already deleted record(locical_src = true and curren_ind = true) comes again as new record . will it be inserted with begin date as '00000'
+
+    */
+
 INSERT INTO EDW_WORK.PARTY_MASTER_OF_MASTERS_XREF
 (
     DIM_PARTY_NATURAL_KEY_HASH_UUID,     
@@ -115,7 +123,7 @@ SELECT
     SRC.AUDIT_ID                                AS AUDIT_ID,                          
     TRUE                                        AS LOGICAL_DELETE_IND,                   
     SRC.CHECK_SUM                               AS CHECK_SUM,                      
-    FALSE                                       AS CURRENT_ROW_IND,                    
+    TRUE                                        AS CURRENT_ROW_IND,                    
     SRC.END_DT                                  AS END_DT,                           
     SRC.END_DTM                                 AS END_DTM,                           
     SRC.SOURCE_SYSTEM_ID                        AS SOURCE_SYSTEM_ID,                  
@@ -135,10 +143,9 @@ WHERE SRC.ADD_UPD_DEL_IND = 'D';
 
 
 -- Apply insert part for all records
-
 /* Insert logic 
-     
-     Insert records which are not presnet in target for Source with ADD_UPD_DEL_IND = 'I'
+     records which comes as 'U' which are not present in target is considered as Insert record.
+     Insert records which are not presnet in target for Source with ADD_UPD_DEL_IND IN ('I','U')
      Begin_date - 0000 or from source(check this)
      End_date  - 9999  */
 
@@ -192,8 +199,8 @@ FROM
 EDW_STAGING.PARTY_MASTER_OF_MASTERS_XREF_PRE_WORK SRC
 WHERE
     SRC.DIM_PARTY_NATURAL_KEY_HASH_UUID
-        NOT IN (SELECT DISTINCT DIM_PARTY_NATURAL_KEY_HASH_UUID FROM EDW_TDSUNSET.PARTY_MASTER_OF_MASTERS_XREF WHERE CURRENT_ROW_IND = TRUE)
-AND SRC.ADD_UPD_DEL_IND = 'I';
+        NOT IN (SELECT DISTINCT DIM_PARTY_NATURAL_KEY_HASH_UUID FROM EDW_TDSUNSET.PARTY_MASTER_OF_MASTERS_XREF WHERE LOGICAL_DELETE_IND = FALSE)
+AND SRC.ADD_UPD_DEL_IND != 'D'; -- what happens when a already deleted record(locical_src = false and curren_ind = true) comes again as new record . will it be inserted with begin date as '00000'
 
 
 
@@ -201,7 +208,9 @@ AND SRC.ADD_UPD_DEL_IND = 'I';
 -- For update we need to have two records, one for prev another for curr
 /* Curr Update logic 
      
-     Insert records which are presnet in target for Source with ADD_UPD_DEL_IND = 'U'
+     Insert records which are presnet in target for Source with ADD_UPD_DEL_IND = 'U','I'
+     Logical delete records(current_ind = true) will be considered as new record and inserted in this step.
+     Expected case - Records with 'I' will not be present in the target
      Begin_date - source begin date
      End_date  - 9999  
      Current_row_ind = True */
@@ -258,11 +267,14 @@ EDW_STAGING.PARTY_MASTER_OF_MASTERS_XREF_PRE_WORK SRC
 WHERE
     SRC.DIM_PARTY_NATURAL_KEY_HASH_UUID
         IN (SELECT DISTINCT DIM_PARTY_NATURAL_KEY_HASH_UUID FROM EDW_TDSUNSET.PARTY_MASTER_OF_MASTERS_XREF WHERE CURRENT_ROW_IND = TRUE)
-AND SRC.ADD_UPD_DEL_IND = 'U';
+AND SRC.ADD_UPD_DEL_IND != 'D';
 
+-- Prev
 /* Prev Update logic 
      
-     Insert records which are presnet in target for Source with ADD_UPD_DEL_IND = 'U'
+     Insert records which are presnet in target for Source with ADD_UPD_DEL_IND = 'U', 'I'
+     Expected case - Records with I will not be present in Target and if presnet will be considered as update.
+     TGT.LOGICAL_DELETE_IND = FALSE check is added to ensure , the logical Deleted record end date is not updated in this step.
      Begin_date - target begin date
      End_date  - source_date - 1  
      Current_row_ind = False */
@@ -320,7 +332,8 @@ EDW_STAGING.PARTY_MASTER_OF_MASTERS_XREF_PRE_WORK SRC
 LEFT JOIN EDW_TDSUNSET.PARTY_MASTER_OF_MASTERS_XREF TGT 
 ON SRC.DIM_PARTY_NATURAL_KEY_HASH_UUID = TGT.DIM_PARTY_NATURAL_KEY_HASH_UUID
 AND TGT.CURRENT_ROW_IND = TRUE
+AND TGT.LOGICAL_DELETE_IND = FALSE
 WHERE
    TGT.DIM_PARTY_NATURAL_KEY_HASH_UUID IS NOT NULL
-   AND SRC.ADD_UPD_DEL_IND = 'U';
+   AND SRC.ADD_UPD_DEL_IND != 'D';
 
